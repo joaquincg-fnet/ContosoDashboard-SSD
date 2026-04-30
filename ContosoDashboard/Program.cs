@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using ContosoDashboard.Data;
 using ContosoDashboard.Services;
+using ContosoDashboard.Models;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.Authorization;
+using System.Security.Claims;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -43,6 +45,8 @@ builder.Services.AddScoped<ITaskService, TaskService>();
 builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
+builder.Services.AddScoped<IFileStorageService, LocalFileStorageService>();
+builder.Services.AddScoped<IDocumentService, DocumentService>();
 
 // Add HttpContextAccessor for accessing user claims
 builder.Services.AddHttpContextAccessor();
@@ -106,6 +110,64 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapBlazorHub();
+
+// File download endpoint — serves files from AppData/uploads with authorization
+app.MapGet("/files/{documentId:int}", async (
+    int documentId,
+    IDocumentService documentService,
+    IFileStorageService fileStorage,
+    ClaimsPrincipal userPrincipal,
+    HttpContext httpContext) =>
+{
+    var userIdClaim = userPrincipal.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    if (!int.TryParse(userIdClaim, out var userId))
+        return Results.Unauthorized();
+
+    Document doc;
+    try { doc = await documentService.GetDocumentAsync(documentId, userId); }
+    catch (UnauthorizedAccessException) { return Results.Forbid(); }
+    catch (KeyNotFoundException) { return Results.NotFound(); }
+
+    string absPath;
+    try { absPath = fileStorage.ResolveAbsolutePath(doc.FilePath); }
+    catch { return Results.BadRequest(); }
+
+    if (!File.Exists(absPath)) return Results.NotFound();
+    return Results.File(absPath, doc.ContentType, fileDownloadName: doc.FileName, enableRangeProcessing: true);
+}).RequireAuthorization();
+
+// File preview endpoint — inline (new tab) for PDF and images
+app.MapGet("/files/{documentId:int}/preview", async (
+    int documentId,
+    IDocumentService documentService,
+    IFileStorageService fileStorage,
+    ClaimsPrincipal userPrincipal,
+    HttpResponse response) =>
+{
+    var userIdClaim = userPrincipal.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    if (!int.TryParse(userIdClaim, out var userId))
+        return Results.Unauthorized();
+
+    Document doc;
+    try { doc = await documentService.GetDocumentAsync(documentId, userId); }
+    catch (UnauthorizedAccessException) { return Results.Forbid(); }
+    catch (KeyNotFoundException) { return Results.NotFound(); }
+
+    string absPath;
+    try { absPath = fileStorage.ResolveAbsolutePath(doc.FilePath); }
+    catch { return Results.BadRequest(); }
+
+    if (!File.Exists(absPath)) return Results.NotFound();
+
+    // Only serve inline for PDF and images; fallback to attachment for other types
+    var inlineTypes = new[] { "application/pdf", "image/jpeg", "image/png", "image/gif", "image/webp" };
+    if (inlineTypes.Contains(doc.ContentType, StringComparer.OrdinalIgnoreCase))
+    {
+        response.Headers.ContentDisposition = "inline";
+        return Results.File(absPath, doc.ContentType, enableRangeProcessing: true);
+    }
+    return Results.File(absPath, doc.ContentType, fileDownloadName: doc.FileName, enableRangeProcessing: true);
+}).RequireAuthorization();
 app.MapFallbackToPage("/_Host");
 
 app.Run();

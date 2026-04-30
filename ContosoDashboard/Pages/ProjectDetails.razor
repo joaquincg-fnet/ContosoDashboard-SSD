@@ -5,6 +5,7 @@
 @using System.Security.Claims
 @attribute [Authorize]
 @inject IProjectService ProjectService
+@inject IDocumentService DocumentService
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
@@ -86,6 +87,50 @@
                                 </p>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><span class="bi bi-file-earmark-text me-2"></span>Project Documents</h5>
+                        <a href="/documents" class="btn btn-sm btn-outline-primary">Upload</a>
+                    </div>
+                    <div class="card-body">
+                        @if (projectDocuments == null)
+                        {
+                            <em>Loading...</em>
+                        }
+                        else if (!projectDocuments.Any())
+                        {
+                            <p class="text-muted">No documents attached to this project yet.</p>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover mb-0">
+                                    <thead class="table-light">
+                                        <tr><th>Title</th><th>Category</th><th>Size</th><th>Actions</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var doc in projectDocuments)
+                                        {
+                                            <tr>
+                                                <td>@doc.Title</td>
+                                                <td><span class="badge bg-light text-dark">@doc.Category</span></td>
+                                                <td>@FormatDocSize(doc.FileSize)</td>
+                                                <td class="text-nowrap">
+                                                    <a href="/files/@doc.DocumentId" class="btn btn-sm btn-outline-primary me-1" title="Download"><span class="bi bi-download"></span></a>
+                                                    @if (doc.ContentType == "application/pdf" || doc.ContentType.StartsWith("image/"))
+                                                    {
+                                                        <a href="/files/@doc.DocumentId/preview" target="_blank" class="btn btn-sm btn-outline-secondary" title="Preview"><span class="bi bi-eye"></span></a>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
                     </div>
                 </div>
 
@@ -237,6 +282,7 @@
     public int ProjectId { get; set; }
 
     private Project? project;
+    private List<DocumentSummary>? projectDocuments;
     private int currentUserId = 0;
 
     protected override async Task OnInitializedAsync()
@@ -253,6 +299,7 @@
         if (currentUserId > 0)
         {
             project = await ProjectService.GetProjectByIdAsync(ProjectId, currentUserId);
+            projectDocuments = await DocumentService.GetProjectDocumentsAsync(ProjectId, currentUserId);
         }
         
         if (project == null)
@@ -295,6 +342,13 @@
             _ => "secondary"
         };
     }
+
+    private static string FormatDocSize(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:F1} KB",
+        _ => $"{bytes / (1024.0 * 1024):F1} MB"
+    };
 
     private string GetInitials(string displayName)
     {

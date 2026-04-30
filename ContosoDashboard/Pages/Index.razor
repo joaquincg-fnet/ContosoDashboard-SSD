@@ -5,6 +5,7 @@
 @attribute [Authorize]
 @inject IDashboardService DashboardService
 @inject INotificationService NotificationService
+@inject IDocumentService DocumentService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
 <PageTitle>Dashboard - ContosoDashboard</PageTitle>
@@ -52,6 +53,15 @@
                     </div>
                 </div>
             </div>
+            <div class="col-md-3 mb-3">
+                <div class="card summary-card">
+                    <div class="card-body">
+                        <h5 class="card-title">Documents</h5>
+                        <p class="card-text display-4 text-success">@documentCount</p>
+                        <a href="/documents" class="stretched-link"></a>
+                    </div>
+                </div>
+            </div>
         </div>
     }
 
@@ -95,6 +105,40 @@
             </div>
         </div>
 
+        <div class="col-md-6 mb-4">
+            <h3>Recent Documents</h3>
+            @if (recentDocuments != null && recentDocuments.Any())
+            {
+                <div class="list-group">
+                    @foreach (var doc in recentDocuments)
+                    {
+                        <div class="list-group-item">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <span class="bi bi-file-earmark me-1 text-muted"></span>
+                                    <strong>@doc.Title</strong>
+                                    <span class="badge bg-light text-dark ms-1">@doc.Category</span>
+                                </div>
+                                <div class="text-nowrap">
+                                    <a href="/files/@doc.DocumentId" class="btn btn-sm btn-outline-secondary me-1" title="Download">
+                                        <span class="bi bi-download"></span>
+                                    </a>
+                                    <small class="text-muted">@doc.UploadedAt.ToString("MMM dd")</small>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="mt-2">
+                    <a href="/documents" class="btn btn-sm btn-link">View all documents →</a>
+                </div>
+            }
+            else
+            {
+                <p class="text-muted">No recent documents</p>
+            }
+        </div>
+
         <div class="col-md-6">
             <h3>Recent Notifications</h3>
             @if (recentNotifications != null && recentNotifications.Any())
@@ -124,6 +168,8 @@
     private DashboardSummary? summary;
     private List<Announcement>? announcements;
     private List<Notification>? recentNotifications;
+    private List<DocumentSummary>? recentDocuments;
+    private int documentCount = 0;
     private string userName = "User";
     private int currentUserId = 0;
 
@@ -146,6 +192,8 @@
             summary = await DashboardService.GetDashboardSummaryAsync(currentUserId);
             announcements = await DashboardService.GetActiveAnnouncementsAsync();
             recentNotifications = await NotificationService.GetUserNotificationsAsync(currentUserId);
+            recentDocuments = await DocumentService.GetRecentDocumentsAsync(currentUserId);
+            documentCount = await DocumentService.GetAccessibleDocumentCountAsync(currentUserId);
         }
     }
 
