@@ -102,7 +102,7 @@ A document owner can share a document with specific users or teams. Recipients r
 - What happens when a user attempts to download a document after being removed from a project? The system re-checks authorization at download time and denies access.
 - What happens when the same user uploads two files with identical names? Unique GUID-based file paths ensure no collision; both files are stored and listed separately.
 - What happens when a user deletes a document that has been shared with others? The document and all share records are permanently removed; recipients' "Shared with Me" sections no longer show the document.
-- What happens when a search query matches more than 500 results? Results are paginated or capped at a reasonable limit (e.g., 100), with a message indicating additional results exist.
+- What happens when a search query matches more than 50 results? Results are paginated at 50 per page; the UI displays a message indicating the total match count and provides navigation to subsequent pages.
 
 ## Requirements *(mandatory)*
 
@@ -113,7 +113,7 @@ A document owner can share a document with specific users or teams. Recipients r
 - **FR-001**: Users MUST be able to upload files of types: PDF, DOCX, XLSX, PPTX, DOC, XLS, PPT, TXT, JPEG, PNG.
 - **FR-002**: System MUST reject uploaded files that exceed 25 MB with a user-readable error message.
 - **FR-003**: System MUST reject files with unsupported extensions and display the list of accepted types.
-- **FR-004**: Users MUST provide a document title and category when uploading; description, project association, and tags are optional.
+- **FR-004**: Users MUST provide a document title and category when uploading; description, project association, and tags are optional. Tags are stored as a comma-separated string (e.g., `"budget,Q1,draft"`).
 - **FR-005**: System MUST display upload progress to the user during the upload operation.
 - **FR-006**: System MUST automatically record upload date/time, uploader identity, file size, and file MIME type upon upload completion.
 - **FR-007**: System MUST store uploaded files outside the web-accessible directory using GUID-based filenames to prevent path traversal attacks.
@@ -131,7 +131,7 @@ A document owner can share a document with specific users or teams. Recipients r
 
 - **FR-014**: Users MUST be able to download any document they are authorized to access.
 - **FR-015**: The download endpoint MUST enforce authorization before serving file content (IDOR protection).
-- **FR-016**: For PDF and image files, the system SHOULD offer an in-browser preview without requiring a download.
+- **FR-016**: For PDF and image files, the system SHOULD offer an in-browser preview by opening the file in a new browser tab via the authorized download endpoint (leveraging the browser's native renderer; no embedded viewer required).
 
 **Metadata Editing & File Replacement**
 
@@ -154,7 +154,7 @@ A document owner can share a document with specific users or teams. Recipients r
 
 - **FR-025**: Project team members MUST be able to see all documents associated with their project on the Project Details page.
 - **FR-026**: Project Managers and Administrators MUST be able to upload documents directly associated with a project.
-- **FR-027**: Users MUST be able to attach documents to tasks from the task detail view; attached documents MUST inherit the task's project association.
+- **FR-027**: Users MUST be able to attach one or more documents to a task from the task detail view; the relationship is many-to-many (a document may be attached to multiple tasks) represented by a `TaskDocument` join entity; attached documents MUST inherit the task's project association.
 - **FR-028**: System MUST notify all project team members when a new document is added to one of their projects.
 
 **Dashboard Integration**
@@ -170,14 +170,15 @@ A document owner can share a document with specific users or teams. Recipients r
 **Access Control**
 
 - **FR-033**: Employees MUST only access documents they uploaded or documents explicitly shared with them or associated with projects they are members of.
-- **FR-034**: Team Leads MUST be able to view and download documents uploaded by their direct team members.
+- **FR-034**: Team Leads MUST be able to view and download documents uploaded by any user in the same department as the Team Lead.
 - **FR-035**: Administrators MUST have full read access to all documents for audit and compliance purposes.
 
 ### Key Entities
 
-- **Document**: Represents a stored file with its metadata — title, description, category (text value from predefined list), tags, upload date/time, file size, MIME type, file path (GUID-based), and associations to the uploading user and optionally a project.
+- **Document**: Represents a stored file with its metadata — title, description, category (text value from predefined list), tags (comma-separated string stored in a single `Tags` column), upload date/time, file size, MIME type, file path (GUID-based), and associations to the uploading user and optionally a project.
 - **DocumentShare**: Represents a sharing relationship — links a Document to a recipient User, captures the share date, and provides the basis for the "Shared with Me" view and share notifications.
 - **DocumentActivityLog**: Records each significant action taken on a document (upload, download, edit, delete, share) with the acting user and timestamp for Administrator audit reports.
+- **TaskDocument**: Join entity representing the many-to-many relationship between a Document and a TaskItem — enables a single document to be attached to multiple tasks and a task to reference multiple documents.
 
 ## Success Criteria *(mandatory)*
 
@@ -191,6 +192,7 @@ A document owner can share a document with specific users or teams. Recipients r
 - **SC-006**: 90% of uploaded documents have a category assigned (non-"Other") at time of upload.
 - **SC-007**: Zero unauthorized document access incidents — no user is able to download or view a document they are not authorized to access.
 - **SC-008**: Files up to 25 MB complete the upload flow (including storage and metadata save) within 30 seconds under normal conditions.
+- **SC-009**: Search and browse results are paginated at 50 items per page; each page loads within 2 seconds.
 
 ## Assumptions
 
@@ -201,6 +203,16 @@ A document owner can share a document with specific users or teams. Recipients r
 - Virus/malware scanning is a stated requirement in the stakeholder document, but no offline scanning library is mandated; the training implementation will validate file extensions and MIME types as the primary safety control, and this constraint will be noted explicitly in the plan.
 - Document integer IDs are used for consistency with the existing `User` and `Project` entity conventions in the codebase.
 - "Teams" in the sharing context refers to users belonging to the same department, consistent with the existing `Department` user attribute; no separate Team entity is required.
+
+## Clarifications
+
+### Session 2026-04-30
+
+- Q: How should the system determine who a Team Lead's "direct team members" are for document access? → A: All users in the same department as the Team Lead
+- Q: How should the task-document attachment relationship work? → A: Many-to-many via a `TaskDocument` join entity
+- Q: How should document tags be stored? → A: Single `Tags` column on `Document` as a comma-separated string
+- Q: What is the maximum number of search results before paginating or capping? → A: 50 results per page
+- Q: How should in-browser document preview be delivered? → A: Open file in a new browser tab using the download endpoint
 
 ## Out of Scope
 
